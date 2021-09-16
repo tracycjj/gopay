@@ -311,3 +311,46 @@ func (a *Client) checkPublicParam(bm gopay.BodyMap) {
 		bm.Set("app_auth_token", a.AppAuthToken)
 	}
 }
+
+//GetAliPayAPIUrlPath 获取url请求路径
+func (a *Client) GetAliPayAPIUrlPath(bm gopay.BodyMap, method string) (err error, path string) {
+	var bodyBs []byte
+
+	// check if there is biz_content
+	bz := bm.GetInterface("biz_content")
+	if bzBody, ok := bz.(gopay.BodyMap); ok {
+		if bodyBs, err = json.Marshal(bzBody); err != nil {
+			return fmt.Errorf("json.Marshal(%v)：%w", bzBody, err), ""
+		}
+		bm.Set("biz_content", string(bodyBs))
+	}
+	if path, err = a.getAliPayPath(bm, method); err != nil {
+		return err, path
+	}
+	return nil, path
+}
+
+// getAliPayPath 获取支付宝请求路径
+func (a *Client) getAliPayPath(bm gopay.BodyMap, method string) (path string, err error) {
+	var (
+		url, sign string
+	)
+	bm.Set("method", method)
+	// check public parameter
+	a.checkPublicParam(bm)
+	// check sign
+	if bm.GetString("sign") == "" {
+		sign, err = GetRsaSign(bm, bm.GetString("sign_type"), a.privateKey)
+		if err != nil {
+			return "", fmt.Errorf("GetRsaSign Error: %v", err)
+		}
+		bm.Set("sign", sign)
+	}
+
+	if a.IsProd {
+		url = baseUrl
+	} else {
+		url = sandboxBaseUrl
+	}
+	return url + "?" + bm.EncodeURLParams(), nil
+}
